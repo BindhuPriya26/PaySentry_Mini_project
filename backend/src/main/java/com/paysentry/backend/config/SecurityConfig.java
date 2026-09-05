@@ -59,6 +59,8 @@ public class SecurityConfig {
                 "/*.jpeg",
                 "/api/auth/**",
                 "/api/health",
+                "/api/internal/mock-events",
+                "/ws/**",
                 "/h2-console/**"
             ).permitAll()
             .antMatchers(HttpMethod.OPTIONS, "/**").permitAll()

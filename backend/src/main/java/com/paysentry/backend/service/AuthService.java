@@ -23,6 +23,7 @@ import com.paysentry.backend.entity.Role;
 import com.paysentry.backend.entity.User;
 import com.paysentry.backend.exception.BadRequestException;
 import com.paysentry.backend.exception.ResourceNotFoundException;
+import com.paysentry.backend.monitoring.BankAccountService;
 import com.paysentry.backend.repository.PasswordResetTokenRepository;
 import com.paysentry.backend.repository.UserRepository;
 import com.paysentry.backend.security.JwtService;
@@ -38,19 +39,22 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final BankAccountService bankAccountService;
 
     public AuthService(
         UserRepository userRepository,
         PasswordResetTokenRepository passwordResetTokenRepository,
         PasswordEncoder passwordEncoder,
         AuthenticationManager authenticationManager,
-        JwtService jwtService
+        JwtService jwtService,
+        BankAccountService bankAccountService
     ) {
         this.userRepository = userRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
+        this.bankAccountService = bankAccountService;
     }
 
     @Transactional
@@ -141,6 +145,7 @@ public class AuthService {
         response.setFullName(user.getFullName());
         response.setEmail(user.getEmail());
         response.setRole(user.getRole().name());
+        response.setAccountId(bankAccountService.createForUser(user).getAccountId());
         response.setToken(jwtService.generateToken(user));
         return response;
     }

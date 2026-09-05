@@ -10,6 +10,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.paysentry.backend.entity.Role;
 import com.paysentry.backend.entity.User;
+import com.paysentry.backend.monitoring.BankAccountService;
 import com.paysentry.backend.repository.UserRepository;
 
 @Configuration
@@ -19,6 +20,7 @@ public class DataInitializer {
     public CommandLineRunner seedAdminUser(
         UserRepository userRepository,
         PasswordEncoder passwordEncoder,
+        BankAccountService bankAccountService,
         @Value("${paysentry.app.admin-email}") String adminEmail,
         @Value("${paysentry.app.admin-password}") String adminPassword,
         @Value("${paysentry.app.admin-name}") String adminName
@@ -37,7 +39,8 @@ public class DataInitializer {
             if (adminUser.getTrustedLocations() == null) {
                 adminUser.setTrustedLocations("");
             }
-            userRepository.save(adminUser);
+            User savedUser = userRepository.save(adminUser);
+            bankAccountService.createForUser(savedUser);
         };
     }
 }

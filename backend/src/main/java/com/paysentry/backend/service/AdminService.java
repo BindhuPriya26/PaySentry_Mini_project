@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.paysentry.backend.dto.admin.SystemStatsResponse;
 import com.paysentry.backend.dto.admin.UserSummaryResponse;
 import com.paysentry.backend.dto.report.ReportResponse;
-import com.paysentry.backend.entity.Report;
 import com.paysentry.backend.entity.RiskLevel;
 import com.paysentry.backend.entity.User;
 import com.paysentry.backend.exception.ResourceNotFoundException;
@@ -33,14 +32,13 @@ public class AdminService {
     private final ReportService reportService;
 
     public AdminService(
-        UserRepository userRepository,
-        ReportRepository reportRepository,
-        SmsScanRepository smsScanRepository,
-        QrScanRepository qrScanRepository,
-        UrlScanRepository urlScanRepository,
-        TransactionRecordRepository transactionRecordRepository,
-        ReportService reportService
-    ) {
+            UserRepository userRepository,
+            ReportRepository reportRepository,
+            SmsScanRepository smsScanRepository,
+            QrScanRepository qrScanRepository,
+            UrlScanRepository urlScanRepository,
+            TransactionRecordRepository transactionRecordRepository,
+            ReportService reportService) {
         this.userRepository = userRepository;
         this.reportRepository = reportRepository;
         this.smsScanRepository = smsScanRepository;
@@ -52,25 +50,25 @@ public class AdminService {
 
     public List<UserSummaryResponse> listUsers() {
         return userRepository.findAll()
-            .stream()
-            .sorted(Comparator.comparing(User::getCreatedAt).reversed())
-            .map(this::toUserSummary)
-            .collect(Collectors.toList());
+                .stream()
+                .sorted(Comparator.comparing(User::getCreatedAt).reversed())
+                .map(this::toUserSummary)
+                .collect(Collectors.toList());
     }
 
     @Transactional
     public UserSummaryResponse updateUserStatus(Long userId, boolean active) {
         User user = userRepository.findById(userId)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found."));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found."));
         user.setActive(active);
         return toUserSummary(userRepository.save(user));
     }
 
     public List<ReportResponse> listReports() {
         return reportRepository.findAllByOrderByCreatedAtDesc()
-            .stream()
-            .map(reportService::toResponse)
-            .collect(Collectors.toList());
+                .stream()
+                .map(reportService::toResponse)
+                .collect(Collectors.toList());
     }
 
     public SystemStatsResponse getSystemStats() {

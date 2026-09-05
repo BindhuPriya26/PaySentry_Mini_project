@@ -6,6 +6,7 @@ public class AuthResponse {
     private String fullName;
     private String email;
     private String role;
+    private String accountId;
     private String token;
 
     public Long getUserId() {
@@ -38,6 +39,14 @@ public class AuthResponse {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getAccountId() {
+        return accountId;
+    }
+
+    public void setAccountId(String accountId) {
+        this.accountId = accountId;
     }
 
     public String getToken() {

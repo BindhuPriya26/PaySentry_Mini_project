@@ -1,6 +1,8 @@
 package com.paysentry.backend.service;
 
 import java.awt.image.BufferedImage;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 import javax.imageio.ImageIO;
 
@@ -16,9 +18,13 @@ import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
 import com.paysentry.backend.dto.scan.FraudScanResponse;
 import com.paysentry.backend.entity.QrScan;
+import com.paysentry.backend.entity.BankingEventType;
 import com.paysentry.backend.entity.ScanType;
 import com.paysentry.backend.entity.User;
 import com.paysentry.backend.exception.BadRequestException;
+import com.paysentry.backend.monitoring.BankAccountService;
+import com.paysentry.backend.monitoring.RiskEngineService;
+import com.paysentry.backend.monitoring.RiskOutcome;
 import com.paysentry.backend.repository.QrScanRepository;
 
 @Service
@@ -27,15 +33,21 @@ public class QrScanService {
     private final QrScanRepository qrScanRepository;
     private final FraudScoringService fraudScoringService;
     private final ReportService reportService;
+    private final BankAccountService bankAccountService;
+    private final RiskEngineService riskEngineService;
 
     public QrScanService(
         QrScanRepository qrScanRepository,
         FraudScoringService fraudScoringService,
-        ReportService reportService
+        ReportService reportService,
+        BankAccountService bankAccountService,
+        RiskEngineService riskEngineService
     ) {
         this.qrScanRepository = qrScanRepository;
         this.fraudScoringService = fraudScoringService;
         this.reportService = reportService;
+        this.bankAccountService = bankAccountService;
+        this.riskEngineService = riskEngineService;
     }
 
     @Transactional
@@ -59,14 +71,24 @@ public class QrScanService {
 
         QrScan savedScan = qrScanRepository.save(scan);
         reportService.createReport(user, ScanType.QR, savedScan.getId(), "QR Fraud Scan", assessment);
+        RiskOutcome unifiedRisk = riskEngineService.recordSignal(
+            user,
+            bankAccountService.getForUser(user),
+            BankingEventType.QR,
+            "qr-upload-" + UUID.randomUUID(),
+            assessment.getRiskScore(),
+            assessment.getFindings(),
+            "uploadedFile=" + file.getOriginalFilename() + "; content=" + extractedContent,
+            LocalDateTime.now()
+        );
 
         FraudScanResponse response = new FraudScanResponse();
         response.setScanId(savedScan.getId());
         response.setChannel("QR");
-        response.setRiskLevel(savedScan.getRiskLevel().name());
-        response.setRiskScore(savedScan.getRiskScore());
+        response.setRiskLevel(unifiedRisk.getRiskLevel().name());
+        response.setRiskScore(unifiedRisk.getScore());
         response.setExplanation(savedScan.getExplanation());
-        response.setFindings(assessment.getFindings());
+        response.setFindings(unifiedRisk.getReasons());
         response.setRecommendations(assessment.getRecommendations());
         response.setExtractedContent(savedScan.getExtractedContent());
         response.setExtractedUrl(savedScan.getExtractedUrl());
