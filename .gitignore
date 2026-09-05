@@ -1,0 +1,13 @@
+frontend/node_modules/
+frontend/dist/
+backend/target/
+backend/.idea/
+backend/.classpath
+backend/.project
+backend/.settings/
+*.log
+*.class
+*.jar
+*.war
+*.iml
+.DS_Store
