@@ -8,6 +8,7 @@ public class MobileAlertResponse {
     private Long id;
     private String title;
     private String eventType;
+    private String eventDetails;
     private int riskScore;
     private String riskLevel;
     private List<String> reasons;
@@ -37,6 +38,14 @@ public class MobileAlertResponse {
 
     public void setEventType(String eventType) {
         this.eventType = eventType;
+    }
+
+    public String getEventDetails() {
+        return eventDetails;
+    }
+
+    public void setEventDetails(String eventDetails) {
+        this.eventDetails = eventDetails;
     }
 
     public int getRiskScore() {

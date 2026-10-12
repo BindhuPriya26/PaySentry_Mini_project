@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     password VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
+    token_version INT NOT NULL DEFAULT 0,
     trusted_devices TEXT NULL,
     trusted_locations TEXT NULL,
     last_login_at DATETIME NULL,
@@ -181,4 +182,53 @@ CREATE TABLE IF NOT EXISTS mobile_device_tokens (
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     CONSTRAINT fk_device_token_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS revoked_jwts (
+    jwt_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    expires_at DATETIME NOT NULL,
+    INDEX idx_revoked_jwts_expires_at (expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS gmail_connections (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL UNIQUE,
+    mailbox_email VARCHAR(320) NOT NULL,
+    encrypted_access_token TEXT NOT NULL,
+    encrypted_refresh_token TEXT NOT NULL,
+    access_token_expires_at DATETIME NOT NULL,
+    scopes VARCHAR(600) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    last_sync_at DATETIME NULL,
+    last_error_at DATETIME NULL,
+    last_error_code VARCHAR(60) NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    CONSTRAINT fk_gmail_connection_user FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_gmail_connection_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS gmail_oauth_states (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    state VARCHAR(128) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    CONSTRAINT fk_gmail_oauth_state_user FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_gmail_oauth_state_expires_at (expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS gmail_message_analyses (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    gmail_connection_id BIGINT NOT NULL,
+    gmail_message_id VARCHAR(128) NOT NULL,
+    sender_domain VARCHAR(253) NULL,
+    subject_fingerprint VARCHAR(64) NOT NULL,
+    risk_score INT NOT NULL,
+    risk_level VARCHAR(12) NOT NULL,
+    reasons TEXT NOT NULL,
+    received_at DATETIME NULL,
+    processed_at DATETIME NOT NULL,
+    CONSTRAINT fk_gmail_message_connection FOREIGN KEY (gmail_connection_id) REFERENCES gmail_connections(id),
+    CONSTRAINT uq_gmail_connection_message UNIQUE (gmail_connection_id, gmail_message_id),
+    INDEX idx_gmail_message_processed_at (processed_at)
 );

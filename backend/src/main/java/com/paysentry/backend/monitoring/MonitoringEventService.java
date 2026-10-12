@@ -49,7 +49,7 @@ public class MonitoringEventService {
     }
 
     @Transactional
-    public EventProcessingResponse process(MockBankEventRequest request) {
+    public synchronized EventProcessingResponse process(MockBankEventRequest request) {
         FraudEvent existing = fraudEventRepository.findByExternalEventId(request.getEventId()).orElse(null);
         if (existing != null) {
             return toResponse(existing, false, "This simulated event was already processed.");
@@ -70,7 +70,7 @@ public class MonitoringEventService {
             recentLienChanges
         );
 
-        updateAccountSnapshot(account, request);
+        updateAccountSnapshot(account, request, occurredAt);
         bankAccountRepository.save(account);
 
         RiskOutcome outcome = riskEngineService.recordSignal(
@@ -106,7 +106,10 @@ public class MonitoringEventService {
         }
     }
 
-    private void updateAccountSnapshot(BankAccount account, MockBankEventRequest request) {
+    private void updateAccountSnapshot(BankAccount account, MockBankEventRequest request, LocalDateTime occurredAt) {
+        if (account.getUpdatedAt() != null && occurredAt.isBefore(account.getUpdatedAt())) {
+            return;
+        }
         if (request.getTotalBalance() != null) {
             account.setTotalBalance(request.getTotalBalance());
         }

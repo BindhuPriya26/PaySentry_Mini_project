@@ -11,10 +11,10 @@ export function formatRiskLabel(value) {
 }
 
 export function riskTone(value) {
-  if (value === "HIGH_RISK") {
+  if (value === "HIGH_RISK" || value === "HIGH" || value === "CRITICAL") {
     return "high";
   }
-  if (value === "MEDIUM_RISK") {
+  if (value === "MEDIUM_RISK" || value === "MEDIUM") {
     return "medium";
   }
   return "safe";

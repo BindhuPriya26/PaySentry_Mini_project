@@ -18,7 +18,9 @@ dependencies:
   intl: ^0.19.0
   mobile_scanner: ^6.0.2
   provider: ^6.1.2
+  receive_sms: ^1.4.0
   stomp_dart_client: ^2.1.0
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

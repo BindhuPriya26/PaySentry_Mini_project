@@ -29,17 +29,20 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
     private final CustomUserDetailsService userDetailsService;
     private final UserRepository userRepository;
     private final BankAccountRepository bankAccountRepository;
+    private final JwtRevocationService jwtRevocationService;
 
     public WebSocketJwtChannelInterceptor(
         JwtService jwtService,
         CustomUserDetailsService userDetailsService,
         UserRepository userRepository,
-        BankAccountRepository bankAccountRepository
+        BankAccountRepository bankAccountRepository,
+        JwtRevocationService jwtRevocationService
     ) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
         this.userRepository = userRepository;
         this.bankAccountRepository = bankAccountRepository;
+        this.jwtRevocationService = jwtRevocationService;
     }
 
     @Override
@@ -63,7 +66,7 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
         String token = authorization.substring(7);
         String username = jwtService.extractUsername(token);
         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-        if (!jwtService.isTokenValid(token, userDetails)) {
+        if (!jwtService.isTokenValid(token, userDetails) || jwtRevocationService.isRevoked(jwtService.extractTokenId(token))) {
             throw new AccessDeniedException("The JWT token is invalid or expired.");
         }
 

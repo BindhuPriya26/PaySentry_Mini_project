@@ -1,10 +1,14 @@
 package com.paysentry.backend.service;
 
 import java.awt.image.BufferedImage;
+import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.Iterator;
 import java.util.UUID;
 
+import javax.imageio.ImageReader;
 import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageInputStream;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,24 +34,29 @@ import com.paysentry.backend.repository.QrScanRepository;
 @Service
 public class QrScanService {
 
+    private static final long MAX_QR_IMAGE_PIXELS = 12_000_000L;
+
     private final QrScanRepository qrScanRepository;
     private final FraudScoringService fraudScoringService;
     private final ReportService reportService;
     private final BankAccountService bankAccountService;
     private final RiskEngineService riskEngineService;
+    private final SensitiveContentService sensitiveContentService;
 
     public QrScanService(
         QrScanRepository qrScanRepository,
         FraudScoringService fraudScoringService,
         ReportService reportService,
         BankAccountService bankAccountService,
-        RiskEngineService riskEngineService
+        RiskEngineService riskEngineService,
+        SensitiveContentService sensitiveContentService
     ) {
         this.qrScanRepository = qrScanRepository;
         this.fraudScoringService = fraudScoringService;
         this.reportService = reportService;
         this.bankAccountService = bankAccountService;
         this.riskEngineService = riskEngineService;
+        this.sensitiveContentService = sensitiveContentService;
     }
 
     @Transactional
@@ -61,16 +70,15 @@ public class QrScanService {
 
         QrScan scan = new QrScan();
         scan.setUser(user);
-        scan.setOriginalFileName(file.getOriginalFilename());
-        scan.setExtractedContent(extractedContent);
-        scan.setExtractedUrl(assessment.getExtractedUrl());
+        scan.setOriginalFileName("QR image analyzed (filename not retained)");
+        scan.setExtractedContent("QR content not retained. fingerprint=" + sensitiveContentService.fingerprint(extractedContent));
+        scan.setExtractedUrl(assessment.getExtractedUrl() == null ? null : sensitiveContentService.safeUrlEvidence(assessment.getExtractedUrl()));
         scan.setFindings(String.join(" | ", assessment.getFindings()));
         scan.setRiskLevel(assessment.getRiskLevel());
         scan.setRiskScore(assessment.getRiskScore());
         scan.setExplanation(assessment.getExplanation());
 
         QrScan savedScan = qrScanRepository.save(scan);
-        reportService.createReport(user, ScanType.QR, savedScan.getId(), "QR Fraud Scan", assessment);
         RiskOutcome unifiedRisk = riskEngineService.recordSignal(
             user,
             bankAccountService.getForUser(user),
@@ -78,9 +86,10 @@ public class QrScanService {
             "qr-upload-" + UUID.randomUUID(),
             assessment.getRiskScore(),
             assessment.getFindings(),
-            "uploadedFile=" + file.getOriginalFilename() + "; content=" + extractedContent,
+            "contentFingerprint=" + sensitiveContentService.fingerprint(extractedContent),
             LocalDateTime.now()
         );
+        reportService.createUnifiedReport(user, ScanType.QR, savedScan.getId(), "QR Fraud Scan", unifiedRisk);
 
         FraudScanResponse response = new FraudScanResponse();
         response.setScanId(savedScan.getId());
@@ -90,15 +99,32 @@ public class QrScanService {
         response.setExplanation(savedScan.getExplanation());
         response.setFindings(unifiedRisk.getReasons());
         response.setRecommendations(assessment.getRecommendations());
-        response.setExtractedContent(savedScan.getExtractedContent());
-        response.setExtractedUrl(savedScan.getExtractedUrl());
+        response.setExtractedContent(extractedContent);
+        response.setExtractedUrl(assessment.getExtractedUrl());
         response.setCreatedAt(savedScan.getCreatedAt());
         return response;
     }
 
     private String decodeQr(MultipartFile file) {
-        try {
-            BufferedImage image = ImageIO.read(file.getInputStream());
+        try (InputStream input = file.getInputStream();
+             ImageInputStream imageInput = ImageIO.createImageInputStream(input)) {
+            if (imageInput == null) {
+                throw new BadRequestException("Uploaded file is not a readable image.");
+            }
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(imageInput);
+            if (!readers.hasNext()) {
+                throw new BadRequestException("Uploaded file is not a readable image.");
+            }
+
+            ImageReader reader = readers.next();
+            BufferedImage image;
+            try {
+                reader.setInput(imageInput, true, true);
+                validateImageDimensions(reader.getWidth(0), reader.getHeight(0));
+                image = reader.read(0);
+            } finally {
+                reader.dispose();
+            }
             if (image == null) {
                 throw new BadRequestException("Uploaded file is not a readable image.");
             }
@@ -113,6 +139,12 @@ public class QrScanService {
             throw exception;
         } catch (Exception exception) {
             throw new BadRequestException("Unable to process the QR image.");
+        }
+    }
+
+    static void validateImageDimensions(int width, int height) {
+        if (width <= 0 || height <= 0 || (long) width * height > MAX_QR_IMAGE_PIXELS) {
+            throw new BadRequestException("QR image dimensions exceed the supported limit.");
         }
     }
 }

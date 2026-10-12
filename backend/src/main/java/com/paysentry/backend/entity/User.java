@@ -44,6 +44,9 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private boolean active = true;
 
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion;
+
     @Lob
     @Column(name = "trusted_devices")
     private String trustedDevices;
@@ -119,7 +122,18 @@ public class User implements UserDetails {
     }
 
     public void setActive(boolean active) {
+        if (this.active != active) {
+            tokenVersion++;
+        }
         this.active = active;
+    }
+
+    public int getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void invalidateSessions() {
+        tokenVersion++;
     }
 
     public String getTrustedDevices() {

@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 import com.paysentry.backend.entity.RiskLevel;
+import com.paysentry.backend.exception.BadRequestException;
 
 @Service
 public class FraudScoringService {
@@ -100,6 +101,9 @@ public class FraudScoringService {
 
     public RiskAssessment assessUrl(String rawUrl) {
         String input = rawUrl.trim();
+        if (input.isEmpty()) {
+            throw new BadRequestException("A URL is required.");
+        }
         String normalized = ensureUrlHasScheme(input);
         String lower = normalized.toLowerCase(Locale.ROOT);
         List<String> findings = new ArrayList<>();
@@ -107,6 +111,9 @@ public class FraudScoringService {
 
         try {
             URI uri = new URI(normalized);
+            if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+                throw new BadRequestException("Only HTTP and HTTPS URLs can be analyzed.");
+            }
             String host = uri.getHost();
 
             if (!lower.startsWith("https://")) {
@@ -227,6 +234,75 @@ public class FraudScoringService {
             findings,
             buildRecommendations(riskLevel),
             normalized
+        );
+    }
+
+    /**
+     * Scores sender and message metadata in memory. The caller must not persist an email body,
+     * attachment body, access token, or refresh token as analysis evidence.
+     */
+    public RiskAssessment assessEmail(
+        String sender,
+        String subject,
+        String body,
+        List<String> urls,
+        boolean hasSuspiciousAttachment
+    ) {
+        String normalizedSender = sender == null ? "" : sender.trim().toLowerCase(Locale.ROOT);
+        String normalizedSubject = subject == null ? "" : subject.trim();
+        String normalizedBody = body == null ? "" : body.trim();
+        String combined = normalizedSubject + "\n" + normalizedBody;
+        int score = 0;
+        List<String> findings = new ArrayList<>();
+
+        if (normalizedSender.isEmpty() || !normalizedSender.contains("@")) {
+            score += 15;
+            findings.add("Sender address is missing or malformed.");
+        }
+        if (normalizedSender.contains("xn--") || normalizedSender.matches(".*[a-z0-9]{2,}[-_.][a-z0-9]{2,}.*@.*")) {
+            score += 15;
+            findings.add("Sender address has look-alike or unusually structured identifiers.");
+        }
+
+        RiskAssessment messageAssessment = assessSms(combined);
+        int keywordSignal = Math.min(35, messageAssessment.getRiskScore());
+        if (keywordSignal >= 18) {
+            score += keywordSignal;
+            findings.add("Email contains urgency, credential, OTP, KYC, or account-blocking indicators.");
+        }
+
+        int suspiciousUrls = 0;
+        for (String url : urls == null ? java.util.Collections.<String>emptyList() : urls) {
+            try {
+                RiskAssessment urlAssessment = assessUrl(url);
+                if (urlAssessment.getRiskScore() >= 35) {
+                    suspiciousUrls++;
+                }
+            } catch (BadRequestException ignored) {
+                suspiciousUrls++;
+            }
+        }
+        if (suspiciousUrls > 0) {
+            score += Math.min(35, 18 + (suspiciousUrls - 1) * 8);
+            findings.add("Email contains " + suspiciousUrls + " suspicious or malformed link(s).");
+        }
+        if (hasSuspiciousAttachment) {
+            score += 20;
+            findings.add("Email includes an attachment type commonly used to deliver malware or phishing content.");
+        }
+
+        score = Math.min(score, 100);
+        if (findings.isEmpty()) {
+            findings.add("No strong phishing indicators were detected in the authorized email metadata and content.");
+        }
+        RiskLevel riskLevel = determineRiskLevel(score);
+        return new RiskAssessment(
+            riskLevel,
+            score,
+            buildExplanation("Gmail message analysis", riskLevel, score, findings),
+            findings,
+            buildRecommendations(riskLevel),
+            null
         );
     }
 

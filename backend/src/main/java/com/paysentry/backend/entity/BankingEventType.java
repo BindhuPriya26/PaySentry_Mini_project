@@ -6,6 +6,7 @@ public enum BankingEventType {
     DEVICE_CHANGE,
     LOCATION_CHANGE,
     SMS,
+    EMAIL,
     URL,
     QR
 }

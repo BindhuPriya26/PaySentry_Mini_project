@@ -1,6 +1,9 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+
+import 'realtime_service.dart';
 
 const apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
@@ -8,9 +11,31 @@ const apiBaseUrl = String.fromEnvironment(
 );
 
 class ApiClient {
-  ApiClient() : _dio = Dio(BaseOptions(baseUrl: apiBaseUrl));
+  ApiClient() : _dio = Dio(BaseOptions(baseUrl: apiBaseUrl)) {
+    if (kReleaseMode && !apiBaseUrl.startsWith('https://')) {
+      throw StateError('Release builds require an HTTPS API_BASE_URL.');
+    }
+    if (kReleaseMode && !websocketUrl.startsWith('wss://')) {
+      throw StateError('Release builds require a secure WSS WEBSOCKET_URL.');
+    }
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (error, handler) {
+          if (error.response?.statusCode == HttpStatus.unauthorized) {
+            _onUnauthorized?.call();
+          }
+          handler.next(error);
+        },
+      ),
+    );
+  }
 
   final Dio _dio;
+  VoidCallback? _onUnauthorized;
+
+  void setUnauthorizedHandler(VoidCallback? handler) {
+    _onUnauthorized = handler;
+  }
 
   void setToken(String? token) {
     _dio.options.headers.remove(HttpHeaders.authorizationHeader);
@@ -43,6 +68,10 @@ class ApiClient {
   Future<Map<String, dynamic>> patchMap(String path) async {
     final response = await _dio.patch<dynamic>(path);
     return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<void> delete(String path) async {
+    await _dio.delete<void>(path);
   }
 
   Future<Map<String, dynamic>> uploadQrImage(File file) async {

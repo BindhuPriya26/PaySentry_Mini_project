@@ -21,11 +21,20 @@ public class DataInitializer {
         UserRepository userRepository,
         PasswordEncoder passwordEncoder,
         BankAccountService bankAccountService,
+        @Value("${paysentry.app.seed-admin-enabled}") boolean seedAdminEnabled,
         @Value("${paysentry.app.admin-email}") String adminEmail,
         @Value("${paysentry.app.admin-password}") String adminPassword,
         @Value("${paysentry.app.admin-name}") String adminName
     ) {
         return args -> {
+            if (!seedAdminEnabled) {
+                return;
+            }
+            if (adminEmail == null || adminEmail.isBlank() || adminPassword == null || adminPassword.isBlank()) {
+                throw new IllegalStateException(
+                    "PAYSENTRY_ADMIN_EMAIL and PAYSENTRY_ADMIN_PASSWORD are required when admin seeding is enabled."
+                );
+            }
             String normalizedEmail = adminEmail.trim().toLowerCase(Locale.ROOT);
             User adminUser = userRepository.findByEmailIgnoreCase(normalizedEmail).orElseGet(User::new);
             adminUser.setFullName(adminName.trim());

@@ -14,9 +14,11 @@ import com.lowagie.text.Paragraph;
 import com.lowagie.text.pdf.PdfWriter;
 import com.paysentry.backend.dto.report.ReportResponse;
 import com.paysentry.backend.entity.Report;
+import com.paysentry.backend.entity.RiskLevel;
 import com.paysentry.backend.entity.ScanType;
 import com.paysentry.backend.entity.User;
 import com.paysentry.backend.exception.ResourceNotFoundException;
+import com.paysentry.backend.monitoring.RiskOutcome;
 import com.paysentry.backend.repository.ReportRepository;
 
 @Service
@@ -40,6 +42,25 @@ public class ReportService {
         report.setRecommendation(String.join(" ", assessment.getRecommendations()));
         report.setRiskLevel(assessment.getRiskLevel());
         report.setRiskScore(assessment.getRiskScore());
+        return reportRepository.save(report);
+    }
+
+    public Report createUnifiedReport(
+        User user,
+        ScanType scanType,
+        Long referenceId,
+        String title,
+        RiskOutcome outcome
+    ) {
+        Report report = new Report();
+        report.setUser(user);
+        report.setScanType(scanType);
+        report.setReferenceId(referenceId);
+        report.setTitle(title);
+        report.setSummary(String.join("\n", outcome.getReasons()));
+        report.setRecommendation(outcome.getRecommendedAction());
+        report.setRiskLevel(toReportRiskLevel(outcome));
+        report.setRiskScore(outcome.getScore());
         return reportRepository.save(report);
     }
 
@@ -108,5 +129,15 @@ public class ReportService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to generate PDF report.", exception);
         }
+    }
+
+    private RiskLevel toReportRiskLevel(RiskOutcome outcome) {
+        if (outcome.getRiskLevel() == com.paysentry.backend.entity.UnifiedRiskLevel.LOW) {
+            return RiskLevel.SAFE;
+        }
+        if (outcome.getRiskLevel() == com.paysentry.backend.entity.UnifiedRiskLevel.MEDIUM) {
+            return RiskLevel.MEDIUM_RISK;
+        }
+        return RiskLevel.HIGH_RISK;
     }
 }

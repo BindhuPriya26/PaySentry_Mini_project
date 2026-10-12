@@ -74,7 +74,6 @@ public class MockBankService {
     public synchronized Map<String, Object> simulate(String accountId, SimulationScenario scenario) {
         AccountState account = getOrCreateAccount(accountId);
         BackendEventPayload payload = createPayload(account, scenario);
-        updateMockState(account, payload);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -83,6 +82,7 @@ public class MockBankService {
                 backendBaseUrl + "/api/internal/mock-events",
                 new HttpEntity<>(payload, headers),
                 Object.class);
+        updateMockState(account, payload);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scenario", scenario.name());

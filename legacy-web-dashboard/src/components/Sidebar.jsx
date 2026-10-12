@@ -1,8 +1,10 @@
 import { describeRiskScore } from "../lib/helpers";
 
-function Sidebar({ activeView, dashboard, navItems, onLogout, onSelectView, user }) {
-  const averageRisk = Math.round(dashboard?.averageRiskScore ?? 0);
-  const fraudAlerts = dashboard?.fraudAlerts ?? 0;
+function Sidebar({ activeView, dashboard, navItems, onLogout, onSelectView, user, unifiedAlerts }) {
+  const averageRisk = unifiedAlerts.length
+    ? Math.max(...unifiedAlerts.map((alert) => alert.riskScore))
+    : 0;
+  const fraudAlerts = unifiedAlerts.filter((alert) => alert.status !== "ACKNOWLEDGED").length;
 
   return (
     <aside className="sidebar">

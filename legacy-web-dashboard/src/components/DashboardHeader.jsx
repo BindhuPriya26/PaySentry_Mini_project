@@ -1,8 +1,10 @@
 import { describeRiskScore, firstName, formatDate } from "../lib/helpers";
 
-function DashboardHeader({ dashboard, lastSyncedAt, loading, notice, onRefresh, user }) {
-  const averageRiskScore = Math.round(dashboard?.averageRiskScore ?? 0);
-  const fraudAlerts = dashboard?.fraudAlerts ?? 0;
+function DashboardHeader({ dashboard, lastSyncedAt, loading, notice, onRefresh, user, unifiedAlerts, monitoringDashboard }) {
+  const averageRiskScore = unifiedAlerts.length
+    ? Math.round(unifiedAlerts.reduce((highest, alert) => Math.max(highest, alert.riskScore), 0))
+    : 0;
+  const fraudAlerts = unifiedAlerts.filter((alert) => alert.status !== "ACKNOWLEDGED").length;
   const totalFraudScans = dashboard?.totalFraudScans ?? 0;
 
   return (
@@ -33,9 +35,9 @@ function DashboardHeader({ dashboard, lastSyncedAt, loading, notice, onRefresh, 
 
       <div className="header-actions">
         <div className="pulse-card">
-          <span>Current average risk</span>
+          <span>Highest active risk</span>
           <strong>{averageRiskScore}</strong>
-          <small>{loading ? "Refreshing metrics..." : describeRiskScore(averageRiskScore)}</small>
+          <small>{loading ? "Refreshing metrics..." : monitoringDashboard?.protectionStatus || describeRiskScore(averageRiskScore)}</small>
         </div>
 
         <button className="secondary-button" disabled={loading} onClick={onRefresh} type="button">

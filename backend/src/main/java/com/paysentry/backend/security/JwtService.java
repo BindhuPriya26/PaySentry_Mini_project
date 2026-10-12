@@ -5,7 +5,10 @@ import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
+
+import javax.annotation.PostConstruct;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -28,10 +31,16 @@ public class JwtService {
     @Value("${paysentry.app.jwt-expiration-ms}")
     private long jwtExpirationMs;
 
+    @PostConstruct
+    void validateSigningKey() {
+        getSigningKey();
+    }
+
     public String generateToken(User user) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", user.getRole().name());
         claims.put("fullName", user.getFullName());
+        claims.put("tokenVersion", user.getTokenVersion());
         return buildToken(claims, user);
     }
 
@@ -46,7 +55,21 @@ public class JwtService {
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
         String username = extractUsername(token);
-        return username.equalsIgnoreCase(userDetails.getUsername()) && !isTokenExpired(token);
+        Object tokenVersion = extractClaim(token, claims -> claims.get("tokenVersion"));
+        return username.equalsIgnoreCase(userDetails.getUsername())
+            && userDetails.isEnabled()
+            && userDetails instanceof User
+            && tokenVersion instanceof Number
+            && ((Number) tokenVersion).intValue() == ((User) userDetails).getTokenVersion()
+            && !isTokenExpired(token);
+    }
+
+    public String extractTokenId(String token) {
+        return extractClaim(token, Claims::getId);
+    }
+
+    public Date extractExpiry(String token) {
+        return extractClaim(token, Claims::getExpiration);
     }
 
     private String buildToken(Map<String, Object> claims, UserDetails userDetails) {
@@ -55,6 +78,7 @@ public class JwtService {
         return Jwts.builder()
             .setClaims(claims)
             .setSubject(userDetails.getUsername())
+            .setId(UUID.randomUUID().toString())
             .setIssuedAt(now)
             .setExpiration(expiry)
             .signWith(getSigningKey(), SignatureAlgorithm.HS256)
@@ -74,11 +98,17 @@ public class JwtService {
     }
 
     private Key getSigningKey() {
+        if (jwtSecret == null || jwtSecret.isBlank()) {
+            throw new IllegalStateException("PAYSENTRY_JWT_SECRET must be configured with at least 256 bits of key material.");
+        }
         byte[] keyBytes;
         try {
             keyBytes = Decoders.BASE64.decode(jwtSecret);
         } catch (IllegalArgumentException exception) {
             keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        }
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException("PAYSENTRY_JWT_SECRET must contain at least 256 bits of key material.");
         }
         return Keys.hmacShaKeyFor(keyBytes);
     }

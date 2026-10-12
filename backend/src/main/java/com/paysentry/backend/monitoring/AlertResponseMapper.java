@@ -18,6 +18,7 @@ public final class AlertResponseMapper {
         response.setId(alert.getId());
         response.setTitle(alert.getTitle());
         response.setEventType(alert.getFraudEvent().getEventType().name());
+        response.setEventDetails(alert.getFraudEvent().getEventDetails());
         response.setRiskScore(alert.getRiskScore());
         response.setRiskLevel(alert.getRiskLevel().name());
         response.setReasons(splitLines(alert.getReasons()));

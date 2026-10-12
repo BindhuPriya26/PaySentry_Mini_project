@@ -1,5 +1,8 @@
 package com.paysentry.backend.controller;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
 import javax.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +31,9 @@ public class MockBankEventController {
         @Value("${paysentry.mock-bank.shared-key}") String mockBankSharedKey
     ) {
         this.monitoringEventService = monitoringEventService;
+        if (mockBankSharedKey == null || mockBankSharedKey.isBlank()) {
+            throw new IllegalStateException("PAYSENTRY_MOCK_BANK_KEY must be configured before starting the backend.");
+        }
         this.mockBankSharedKey = mockBankSharedKey;
     }
 
@@ -36,7 +42,11 @@ public class MockBankEventController {
         @RequestHeader(value = "X-Mock-Bank-Key", required = false) String providedKey,
         @Valid @RequestBody MockBankEventRequest request
     ) {
-        if (!mockBankSharedKey.equals(providedKey)) {
+        if (providedKey == null || providedKey.isBlank()
+            || !MessageDigest.isEqual(
+                mockBankSharedKey.getBytes(StandardCharsets.UTF_8),
+                providedKey.getBytes(StandardCharsets.UTF_8)
+            )) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Mock bank key is invalid.");
         }
         return ResponseEntity.ok(monitoringEventService.process(request));

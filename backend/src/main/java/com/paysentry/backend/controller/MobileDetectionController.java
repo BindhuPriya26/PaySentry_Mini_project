@@ -13,6 +13,7 @@ import com.paysentry.backend.dto.detection.ContentDetectionRequest;
 import com.paysentry.backend.dto.detection.ContentDetectionResponse;
 import com.paysentry.backend.entity.BankingEventType;
 import com.paysentry.backend.entity.User;
+import com.paysentry.backend.exception.BadRequestException;
 import com.paysentry.backend.monitoring.MobileDetectionService;
 
 @RestController
@@ -30,6 +31,9 @@ public class MobileDetectionController {
         @AuthenticationPrincipal User user,
         @Valid @RequestBody ContentDetectionRequest request
     ) {
+        if (!request.isConsentConfirmed()) {
+            throw new BadRequestException("Confirm that you want to send this SMS to PaySentry for analysis.");
+        }
         return ResponseEntity.ok(mobileDetectionService.analyze(user, BankingEventType.SMS, request.getContent()));
     }
 

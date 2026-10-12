@@ -667,6 +667,112 @@ textarea:focus {
   padding: 1rem;
 }
 
+.monitoring-status,
+.monitoring-risk,
+.gmail-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.monitoring-status {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 0.55rem 0.8rem;
+  white-space: nowrap;
+}
+
+.connection-dot {
+  background: var(--amber);
+  border-radius: 50%;
+  height: 0.6rem;
+  width: 0.6rem;
+}
+
+.connection-dot.connected {
+  background: var(--green);
+}
+
+.metric-text {
+  font-size: 1.3rem !important;
+  overflow-wrap: anywhere;
+}
+
+.monitoring-subheading {
+  margin-bottom: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.monitoring-row,
+.unified-alert,
+.gmail-status {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.monitoring-row,
+.gmail-status {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.monitoring-row > div:first-child,
+.gmail-status > div:first-child {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.monitoring-row small,
+.gmail-status small,
+.unified-alert small {
+  color: var(--muted);
+}
+
+.monitoring-risk {
+  align-items: end;
+  flex-direction: column;
+}
+
+.unified-alert {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.unified-alert-heading {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.unified-alert-heading h4 {
+  margin: 0.55rem 0 0.15rem;
+}
+
+.event-details {
+  background: rgba(16, 36, 58, 0.04);
+  border-radius: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+}
+
+.evidence-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.recommended-action {
+  margin: 0;
+}
+
 @media (max-width: 1180px) {
   .app-shell,
   .auth-shell,
@@ -726,5 +832,16 @@ textarea:focus {
   .field.compact {
     min-width: auto;
     width: 100%;
+  }
+
+  .monitoring-row,
+  .gmail-status,
+  .unified-alert-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .monitoring-risk {
+    align-items: start;
   }
 }

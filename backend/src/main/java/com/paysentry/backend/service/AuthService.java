@@ -1,11 +1,8 @@
 package com.paysentry.backend.service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,18 +24,17 @@ import com.paysentry.backend.monitoring.BankAccountService;
 import com.paysentry.backend.repository.PasswordResetTokenRepository;
 import com.paysentry.backend.repository.UserRepository;
 import com.paysentry.backend.security.JwtService;
+import com.paysentry.backend.security.JwtRevocationService;
 
 @Service
 public class AuthService {
-
-    @Value("${paysentry.app.reset-token-expiration-minutes}")
-    private long resetTokenExpirationMinutes;
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final JwtRevocationService jwtRevocationService;
     private final BankAccountService bankAccountService;
 
     public AuthService(
@@ -47,7 +43,8 @@ public class AuthService {
         PasswordEncoder passwordEncoder,
         AuthenticationManager authenticationManager,
         JwtService jwtService,
-        BankAccountService bankAccountService
+        BankAccountService bankAccountService,
+        JwtRevocationService jwtRevocationService
     ) {
         this.userRepository = userRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
@@ -55,6 +52,7 @@ public class AuthService {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.bankAccountService = bankAccountService;
+        this.jwtRevocationService = jwtRevocationService;
     }
 
     @Transactional
@@ -97,26 +95,8 @@ public class AuthService {
 
     @Transactional
     public ForgotPasswordResponse forgotPassword(ForgotPasswordRequest request) {
-        User user = userRepository.findByEmailIgnoreCase(request.getEmail())
-            .orElseThrow(() -> new ResourceNotFoundException("No account found for this email."));
-
-        List<PasswordResetToken> existingTokens = passwordResetTokenRepository.findByUserAndUsedFalse(user);
-        for (PasswordResetToken existingToken : existingTokens) {
-            existingToken.setUsed(true);
-        }
-        passwordResetTokenRepository.saveAll(existingTokens);
-
-        PasswordResetToken token = new PasswordResetToken();
-        token.setUser(user);
-        token.setToken(UUID.randomUUID().toString());
-        token.setExpiresAt(LocalDateTime.now().plusMinutes(resetTokenExpirationMinutes));
-        token.setUsed(false);
-        passwordResetTokenRepository.save(token);
-
         ForgotPasswordResponse response = new ForgotPasswordResponse();
-        response.setMessage("Password reset token generated. In a production setup this would be emailed to the user.");
-        response.setResetToken(token.getToken());
-        response.setExpiresAt(token.getExpiresAt());
+        response.setMessage("Password reset is unavailable because email delivery is not configured on this server.");
         return response;
     }
 
@@ -133,10 +113,21 @@ public class AuthService {
 
         User user = token.getUser();
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.invalidateSessions();
         userRepository.save(user);
 
         token.setUsed(true);
         passwordResetTokenRepository.save(token);
+    }
+
+    @Transactional
+    public void logout(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            return;
+        }
+        String token = authorizationHeader.substring(7);
+        jwtRevocationService.revoke(jwtService.extractTokenId(token), jwtService.extractExpiry(token));
+        jwtRevocationService.removeExpired();
     }
 
     private AuthResponse buildAuthResponse(User user) {

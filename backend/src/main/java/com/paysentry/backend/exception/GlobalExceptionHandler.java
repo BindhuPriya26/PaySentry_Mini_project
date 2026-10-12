@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.paysentry.backend.dto.common.ApiErrorResponse;
+import com.paysentry.backend.service.GmailIntegrationException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -46,6 +47,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNotFound(ResourceNotFoundException exception) {
         return buildError(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(GmailIntegrationException.class)
+    public ResponseEntity<ApiErrorResponse> handleGmailIntegration(GmailIntegrationException exception) {
+        HttpStatus status = HttpStatus.resolve(exception.getStatusCode());
+        return buildError(status == null ? HttpStatus.BAD_GATEWAY : status, exception.getMessage());
     }
 
     @ExceptionHandler(AccessDeniedException.class)

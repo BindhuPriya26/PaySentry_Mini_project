@@ -12,6 +12,7 @@ import com.paysentry.backend.entity.BankingEventType;
 import com.paysentry.backend.entity.User;
 import com.paysentry.backend.service.FraudScoringService;
 import com.paysentry.backend.service.RiskAssessment;
+import com.paysentry.backend.service.SensitiveContentService;
 
 @Service
 public class MobileDetectionService {
@@ -19,15 +20,18 @@ public class MobileDetectionService {
     private final FraudScoringService fraudScoringService;
     private final BankAccountService bankAccountService;
     private final RiskEngineService riskEngineService;
+    private final SensitiveContentService sensitiveContentService;
 
     public MobileDetectionService(
         FraudScoringService fraudScoringService,
         BankAccountService bankAccountService,
-        RiskEngineService riskEngineService
+        RiskEngineService riskEngineService,
+        SensitiveContentService sensitiveContentService
     ) {
         this.fraudScoringService = fraudScoringService;
         this.bankAccountService = bankAccountService;
         this.riskEngineService = riskEngineService;
+        this.sensitiveContentService = sensitiveContentService;
     }
 
     @Transactional
@@ -42,7 +46,7 @@ public class MobileDetectionService {
             eventType.name().toLowerCase() + "-" + UUID.randomUUID(),
             assessment.getRiskScore(),
             assessment.getFindings(),
-            "content=" + content.trim(),
+            "contentFingerprint=" + sensitiveContentService.fingerprint(content),
             analyzedAt
         );
 

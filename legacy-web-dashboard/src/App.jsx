@@ -1,12 +1,14 @@
-import { startTransition, useEffect, useState } from "react";
+import { Client } from "@stomp/stompjs";
+import { startTransition, useEffect, useRef, useState } from "react";
 
-import { api, extractErrorMessage, setAuthToken } from "./api/client";
+import { api, extractErrorMessage, resolveWebSocketUrl, setAuthToken } from "./api/client";
 import AdminSection from "./components/AdminSection";
 import AuthPanel from "./components/AuthPanel";
 import DashboardHeader from "./components/DashboardHeader";
 import OverviewSection from "./components/OverviewSection";
 import ReportsSection from "./components/ReportsSection";
 import ScanSection from "./components/ScanSection";
+import MonitoringSection from "./components/MonitoringSection";
 import Sidebar from "./components/Sidebar";
 import { formatDate } from "./lib/helpers";
 
@@ -18,6 +20,7 @@ const navItems = [
   { id: "qr", label: "QR Shield" },
   { id: "url", label: "Phishing URL" },
   { id: "transaction", label: "Transactions" },
+  { id: "monitoring", label: "Alerts & bank activity" },
   { id: "reports", label: "Reports" },
   { id: "admin", label: "Admin" }
 ];
@@ -27,9 +30,7 @@ function createInitialAuthForm() {
     fullName: "",
     email: "",
     password: "",
-    resetEmail: "",
-    resetToken: "",
-    newPassword: ""
+    resetEmail: ""
   };
 }
 
@@ -133,7 +134,8 @@ function validateTransactionForm(transactionForm) {
 
 function loadStoredSession() {
   try {
-    const storedValue = window.localStorage.getItem(STORAGE_KEY);
+    const storedValue = window.sessionStorage.getItem(STORAGE_KEY);
+    window.localStorage.removeItem(STORAGE_KEY);
     return storedValue ? JSON.parse(storedValue) : null;
   } catch (error) {
     return null;
@@ -147,6 +149,9 @@ function App() {
   const [activeView, setActiveView] = useState("overview");
   const [forms, setForms] = useState(createInitialScanForms);
   const [dashboard, setDashboard] = useState(null);
+  const [monitoringDashboard, setMonitoringDashboard] = useState(null);
+  const [unifiedAlerts, setUnifiedAlerts] = useState([]);
+  const [realtimeStatus, setRealtimeStatus] = useState("Disconnected");
   const [reports, setReports] = useState([]);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState([]);
@@ -158,6 +163,7 @@ function App() {
   const [downloadId, setDownloadId] = useState(null);
   const [togglingUserId, setTogglingUserId] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const refreshWorkspaceRef = useRef(() => {});
 
   const allowedNavItems =
     session?.role === "ADMIN" ? navItems : navItems.filter((item) => item.id !== "admin");
@@ -176,12 +182,12 @@ function App() {
   useEffect(() => {
     if (!session?.token) {
       setAuthToken(null);
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.sessionStorage.removeItem(STORAGE_KEY);
       return;
     }
 
     setAuthToken(session.token);
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 
     let ignore = false;
 
@@ -189,9 +195,11 @@ function App() {
       setLoadingWorkspace(true);
 
       try {
-        const [dashboardResponse, reportsResponse] = await Promise.all([
+        const [dashboardResponse, reportsResponse, monitoringResponse, alertsResponse] = await Promise.all([
           api.get("/dashboard"),
-          api.get("/reports")
+          api.get("/reports"),
+          api.get("/mobile/dashboard"),
+          api.get("/mobile/alerts")
         ]);
 
         if (ignore) {
@@ -200,6 +208,8 @@ function App() {
 
         setDashboard(dashboardResponse.data);
         setReports(reportsResponse.data);
+        setMonitoringDashboard(monitoringResponse.data);
+        setUnifiedAlerts(alertsResponse.data);
         setLastSyncedAt(new Date().toISOString());
 
         if (session.role === "ADMIN") {
@@ -248,13 +258,17 @@ function App() {
     setLoadingWorkspace(true);
 
     try {
-      const [dashboardResponse, reportsResponse] = await Promise.all([
+      const [dashboardResponse, reportsResponse, monitoringResponse, alertsResponse] = await Promise.all([
         api.get("/dashboard"),
-        api.get("/reports")
+        api.get("/reports"),
+        api.get("/mobile/dashboard"),
+        api.get("/mobile/alerts")
       ]);
 
       setDashboard(dashboardResponse.data);
       setReports(reportsResponse.data);
+      setMonitoringDashboard(monitoringResponse.data);
+      setUnifiedAlerts(alertsResponse.data);
       setLastSyncedAt(new Date().toISOString());
 
       if (session.role === "ADMIN") {
@@ -279,6 +293,51 @@ function App() {
       setLoadingWorkspace(false);
     }
   }
+
+  refreshWorkspaceRef.current = refreshWorkspace;
+
+  useEffect(() => {
+    if (!session?.token || !session?.accountId) {
+      setRealtimeStatus("Disconnected");
+      return undefined;
+    }
+
+    const client = new Client({
+      brokerURL: resolveWebSocketUrl(),
+      connectHeaders: {
+        Authorization: `Bearer ${session.token}`
+      },
+      reconnectDelay: 5000,
+      heartbeatIncoming: 10000,
+      heartbeatOutgoing: 10000,
+      onConnect: () => {
+        setRealtimeStatus("Connected");
+        client.subscribe(`/topic/accounts/${session.accountId}`, (message) => {
+          try {
+            const alert = JSON.parse(message.body);
+            setNotice(buildNotice(
+              "error",
+              alert.title || "New PaySentry alert",
+              `Risk score ${alert.riskScore ?? "unknown"}/100. ${alert.recommendedAction || ""}`
+            ));
+          } catch (error) {
+            setNotice(buildNotice("error", "New PaySentry alert", "A new alert was received; refreshing saved alert history."));
+          }
+          refreshWorkspaceRef.current();
+        });
+        refreshWorkspaceRef.current();
+      },
+      onWebSocketClose: () => setRealtimeStatus("Reconnecting"),
+      onWebSocketError: () => setRealtimeStatus("Connection error"),
+      onStompError: () => setRealtimeStatus("Connection rejected")
+    });
+
+    client.activate();
+    return () => {
+      setRealtimeStatus("Disconnected");
+      void client.deactivate();
+    };
+  }, [session?.accountId, session?.token]);
 
   function updateAuthField(field, value) {
     setAuthForm((current) => ({
@@ -401,36 +460,15 @@ function App() {
         email: authForm.resetEmail
       });
 
-      updateAuthField("resetToken", response.data.resetToken || "");
       setNotice(
         buildNotice(
-          "success",
-          "Reset token generated",
-          `${response.data.message} Token: ${response.data.resetToken}`
+          "info",
+          "Password reset unavailable",
+          response.data.message
         )
       );
     } catch (error) {
       setNotice(buildNotice("error", "Could not generate token", extractErrorMessage(error)));
-    } finally {
-      setBusyAction("");
-    }
-  }
-
-  async function handleResetPassword() {
-    setBusyAction("reset");
-    setNotice(null);
-
-    try {
-      await api.post("/auth/reset-password", {
-        token: authForm.resetToken,
-        newPassword: authForm.newPassword
-      });
-
-      setNotice(buildNotice("success", "Password updated", "You can now sign in with your new password."));
-      setAuthMode("login");
-      setAuthForm(createInitialAuthForm());
-    } catch (error) {
-      setNotice(buildNotice("error", "Reset failed", extractErrorMessage(error)));
     } finally {
       setBusyAction("");
     }
@@ -446,11 +484,21 @@ function App() {
       return;
     }
 
+    const consented = window.confirm(
+      "Send this SMS to your configured PaySentry backend for analysis? The message is redacted before it is saved."
+    );
+    if (!consented) {
+      return;
+    }
+
     setBusyAction("sms");
     setNotice(null);
 
     try {
-      const response = await api.post("/scans/sms", { messageContent });
+      const response = await api.post("/scans/sms", {
+        messageContent,
+        consentConfirmed: true
+      });
       setScanResults((current) => ({
         ...current,
         sms: normalizeScanResult("sms", response.data)
@@ -618,9 +666,18 @@ function App() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    let revoked = true;
+    try {
+      await api.post("/auth/logout");
+    } catch (error) {
+      revoked = false;
+    }
+    setAuthToken(null);
     setSession(null);
     setDashboard(null);
+    setMonitoringDashboard(null);
+    setUnifiedAlerts([]);
     setReports([]);
     setAdminStats(null);
     setAdminUsers([]);
@@ -629,17 +686,14 @@ function App() {
     setForms(createInitialScanForms());
     setLastSyncedAt(null);
     setActiveView("overview");
-    setNotice(buildNotice("success", "Signed out", "Your workspace session has been cleared from this browser."));
+    setNotice(revoked
+      ? buildNotice("success", "Signed out", "Your server session was revoked and browser session cleared.")
+      : buildNotice("error", "Signed out locally", "The server could not revoke this token. It remains valid until it expires."));
   }
 
-  function useDemoCredentials() {
-    setAuthMode("login");
-    setAuthForm({
-      ...createInitialAuthForm(),
-      email: "admin@paysentry.local",
-      password: "Admin@123"
-    });
-    setNotice(buildNotice("success", "Demo credentials loaded", "You can sign in with the prefilled admin account."));
+  async function acknowledgeUnifiedAlert(alertId) {
+    await api.patch(`/mobile/alerts/${alertId}/acknowledge`);
+    await refreshWorkspace();
   }
 
   if (!session?.token) {
@@ -653,9 +707,7 @@ function App() {
         onForgotPassword={handleForgotPassword}
         onLogin={handleLogin}
         onRegister={handleRegister}
-        onResetPassword={handleResetPassword}
         onUpdateField={updateAuthField}
-        onUseDemoCredentials={useDemoCredentials}
       />
     );
   }
@@ -668,6 +720,7 @@ function App() {
         navItems={allowedNavItems}
         onLogout={handleLogout}
         onSelectView={(view) => startTransition(() => setActiveView(view))}
+        unifiedAlerts={unifiedAlerts}
         user={session}
       />
 
@@ -678,6 +731,8 @@ function App() {
           loading={loadingWorkspace}
           notice={notice}
           onRefresh={refreshWorkspace}
+          unifiedAlerts={unifiedAlerts}
+          monitoringDashboard={monitoringDashboard}
           user={session}
         />
 
@@ -747,6 +802,17 @@ function App() {
             downloadingId={downloadId}
             reports={reports}
             onDownload={handleReportDownload}
+          />
+        )}
+
+        {activeView === "monitoring" && (
+          <MonitoringSection
+            alerts={unifiedAlerts}
+            dashboard={monitoringDashboard}
+            loading={loadingWorkspace}
+            onAcknowledge={acknowledgeUnifiedAlert}
+            onRefresh={refreshWorkspace}
+            realtimeStatus={realtimeStatus}
           />
         )}
 

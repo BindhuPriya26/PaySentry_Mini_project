@@ -8,6 +8,8 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.paysentry.backend.entity.BankAccount;
 import com.paysentry.backend.entity.BankingEventType;
@@ -25,15 +27,18 @@ public class RiskEngineService {
     private final FraudEventRepository fraudEventRepository;
     private final FraudAlertRepository fraudAlertRepository;
     private final RealtimeAlertService realtimeAlertService;
+    private final RiskThresholds riskThresholds;
 
     public RiskEngineService(
         FraudEventRepository fraudEventRepository,
         FraudAlertRepository fraudAlertRepository,
-        RealtimeAlertService realtimeAlertService
+        RealtimeAlertService realtimeAlertService,
+        RiskThresholds riskThresholds
     ) {
         this.fraudEventRepository = fraudEventRepository;
         this.fraudAlertRepository = fraudAlertRepository;
         this.realtimeAlertService = realtimeAlertService;
+        this.riskThresholds = riskThresholds;
     }
 
     @Transactional
@@ -60,13 +65,14 @@ public class RiskEngineService {
         }
 
         List<String> reasons = new ArrayList<>(directReasons);
-        List<FraudEvent> recentEvents = fraudEventRepository.findByUserAndOccurredAtAfterOrderByOccurredAtDesc(
+        List<FraudEvent> recentEvents = fraudEventRepository.findByUserAndOccurredAtBetweenOrderByOccurredAtDesc(
             user,
-            occurredAt.minusHours(24)
+            occurredAt.minusHours(24),
+            occurredAt
         );
         int correlationBonus = calculateCorrelationBonus(eventType, directRiskScore, recentEvents, reasons);
         int overallScore = Math.min(100, directRiskScore + correlationBonus);
-        UnifiedRiskLevel riskLevel = UnifiedRiskLevel.fromScore(overallScore);
+        UnifiedRiskLevel riskLevel = riskThresholds.classify(overallScore);
 
         FraudEvent event = new FraudEvent();
         event.setUser(user);
@@ -93,10 +99,24 @@ public class RiskEngineService {
             alert.setReasons(String.join("\n", reasons));
             alert.setRecommendedAction(recommendationFor(riskLevel));
             alert = fraudAlertRepository.save(alert);
-            realtimeAlertService.publish(alert);
+            publishAfterCommit(alert);
         }
 
         return new RiskOutcome(savedEvent, alert, overallScore, riskLevel, reasons, recommendationFor(riskLevel));
+    }
+
+    private void publishAfterCommit(FraudAlert alert) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()
+            || !TransactionSynchronizationManager.isActualTransactionActive()) {
+            realtimeAlertService.publish(alert);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                realtimeAlertService.publish(alert);
+            }
+        });
     }
 
     private int calculateCorrelationBonus(

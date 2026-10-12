@@ -13,7 +13,11 @@ public interface FraudEventRepository extends JpaRepository<FraudEvent, Long> {
 
     Optional<FraudEvent> findByExternalEventId(String externalEventId);
 
-    List<FraudEvent> findByUserAndOccurredAtAfterOrderByOccurredAtDesc(User user, LocalDateTime occurredAfter);
+    List<FraudEvent> findByUserAndOccurredAtBetweenOrderByOccurredAtDesc(
+        User user,
+        LocalDateTime occurredAfter,
+        LocalDateTime occurredBefore
+    );
 
     List<FraudEvent> findTop10ByUserOrderByOccurredAtDesc(User user);
 

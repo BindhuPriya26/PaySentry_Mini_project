@@ -7,8 +7,6 @@ function AuthPanel({
   onForgotPassword,
   onLogin,
   onRegister,
-  onResetPassword,
-  onUseDemoCredentials,
   onUpdateField
 }) {
   return (
@@ -63,7 +61,7 @@ function AuthPanel({
             onClick={() => onAuthModeChange("forgot")}
             type="button"
           >
-            Reset
+            Password help
           </button>
         </div>
 
@@ -123,11 +121,6 @@ function AuthPanel({
                   : "Create secure account"}
             </button>
 
-            {authMode === "login" && (
-              <button className="ghost-button" onClick={onUseDemoCredentials} type="button">
-                Use demo admin account
-              </button>
-            )}
           </div>
         )}
 
@@ -149,44 +142,15 @@ function AuthPanel({
               onClick={onForgotPassword}
               type="button"
             >
-              {busyAction === "forgot" ? "Generating token..." : "Generate reset token"}
+              {busyAction === "forgot" ? "Checking..." : "Check password reset availability"}
             </button>
 
-            <label className="field">
-              <span>Reset token</span>
-              <input
-                onChange={(event) => onUpdateField("resetToken", event.target.value)}
-                placeholder="Paste the reset token"
-                type="text"
-                value={authForm.resetToken}
-              />
-            </label>
-
-            <label className="field">
-              <span>New password</span>
-              <input
-                onChange={(event) => onUpdateField("newPassword", event.target.value)}
-                placeholder="Enter a new password"
-                type="password"
-                value={authForm.newPassword}
-              />
-            </label>
-
-            <button
-              className="primary-button"
-              disabled={busyAction === "reset"}
-              onClick={onResetPassword}
-              type="button"
-            >
-              {busyAction === "reset" ? "Updating password..." : "Reset password"}
-            </button>
+            <p className="auth-footnote">
+              Password recovery email delivery is not configured on this backend. This check will
+              not reveal or generate a reset token.
+            </p>
           </div>
         )}
-
-        <div className="auth-footnote">
-          <span>Quick demo admin access</span>
-          <strong>admin@paysentry.local / Admin@123</strong>
-        </div>
       </section>
     </div>
   );

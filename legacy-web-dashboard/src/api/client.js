@@ -25,6 +25,16 @@ export const api = axios.create({
   baseURL
 });
 
+export function resolveWebSocketUrl() {
+  if (import.meta.env.VITE_WEBSOCKET_URL) {
+    return import.meta.env.VITE_WEBSOCKET_URL;
+  }
+
+  const apiUrl = new URL(baseURL, window.location.origin);
+  const protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${apiUrl.host}/ws`;
+}
+
 export function setAuthToken(token) {
   if (token) {
     api.defaults.headers.common.Authorization = `Bearer ${token}`;
