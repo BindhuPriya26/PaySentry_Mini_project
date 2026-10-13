@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 
 import com.paysentry.backend.repository.UserRepository;
 
+import java.util.Locale;
+
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
 
@@ -18,7 +20,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        return userRepository.findByEmailIgnoreCase(username)
+        return userRepository.findByNormalizedEmail(username.trim().toLowerCase(Locale.ROOT))
             .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + username));
     }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -22,9 +23,11 @@ class SessionState extends ChangeNotifier {
     _apiClient.setUnauthorizedHandler(() {
       unawaited(_expireSession());
     });
+    _apiClient.setRefreshHandler(_refreshAccessToken);
   }
 
   static const _tokenKey = 'paysentry_token';
+  static const _refreshTokenKey = 'paysentry_refresh_token';
   static const _accountIdKey = 'paysentry_account_id';
   static const _nameKey = 'paysentry_name';
   static const _roleKey = 'paysentry_role';
@@ -45,19 +48,45 @@ class SessionState extends ChangeNotifier {
   int alertVersion = 0;
   bool smsMonitoringEnabled = false;
   Object? smsMonitoringError;
+  Timer? _sessionRefreshTimer;
 
   ApiClient get apiClient => _apiClient;
   bool get isAuthenticated => token != null && accountId != null;
 
   Future<void> restore() async {
     token = await _storage.read(key: _tokenKey);
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
     accountId = await _storage.read(key: _accountIdKey);
     fullName = await _storage.read(key: _nameKey);
     role = await _storage.read(key: _roleKey);
     smsMonitoringEnabled =
         await _storage.read(key: _smsMonitoringKey) == 'true';
     _apiClient.setToken(token);
+    if (isAuthenticated && refreshToken != null && refreshToken.isNotEmpty) {
+      try {
+        final refreshedToken = await _refreshAccessToken();
+        if (refreshedToken == null) {
+          await _clearLocalSession();
+        } else {
+          await _restoreAuthenticatedServices();
+        }
+      } on DioException catch (error) {
+        if (error.response?.statusCode == 401) {
+          await _clearLocalSession();
+        } else {
+          await _restoreAuthenticatedServices();
+        }
+      }
+    } else if (isAuthenticated || refreshToken != null) {
+      await _clearLocalSession();
+    }
+    isReady = true;
+    notifyListeners();
+  }
+
+  Future<void> _restoreAuthenticatedServices() async {
     if (isAuthenticated) {
+      _startSessionRefreshTimer();
       _connectRealtime();
       if (smsMonitoringEnabled) {
         if (await _smsMonitoringService.hasPermission()) {
@@ -70,8 +99,6 @@ class SessionState extends ChangeNotifier {
         }
       }
     }
-    isReady = true;
-    notifyListeners();
   }
 
   Future<void> login(String email, String password) async {
@@ -95,9 +122,14 @@ class SessionState extends ChangeNotifier {
 
   Future<void> logout() async {
     try {
-      await _apiClient.postMap('/auth/logout');
+      await _apiClient.postMap(
+        '/auth/logout',
+        data: <String, dynamic>{
+          'refreshToken': await _storage.read(key: _refreshTokenKey),
+        },
+      );
     } catch (_) {
-      // Local credential removal is still required for a stateless JWT logout.
+      // Local credentials must be cleared even when server revocation is unavailable.
     }
     await _clearLocalSession();
   }
@@ -124,17 +156,20 @@ class SessionState extends ChangeNotifier {
 
   Future<void> _acceptAuth(Map<String, dynamic> response) async {
     token = response['token'] as String?;
+    final refreshToken = response['refreshToken'] as String?;
     accountId = response['accountId'] as String?;
     fullName = response['fullName'] as String?;
     role = response['role'] as String?;
-    if (!isAuthenticated) {
+    if (!isAuthenticated || refreshToken == null || refreshToken.isEmpty) {
       throw StateError('The server did not return a valid mobile session.');
     }
     _apiClient.setToken(token);
     await _storage.write(key: _tokenKey, value: token);
+    await _storage.write(key: _refreshTokenKey, value: refreshToken);
     await _storage.write(key: _accountIdKey, value: accountId);
     await _storage.write(key: _nameKey, value: fullName);
     await _storage.write(key: _roleKey, value: role);
+    _startSessionRefreshTimer();
     _connectRealtime();
     await _pushNotificationService.register(_apiClient);
     if (smsMonitoringEnabled) {
@@ -148,6 +183,31 @@ class SessionState extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  Future<String?> _refreshAccessToken() async {
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
+    if (refreshToken == null || refreshToken.isEmpty) {
+      return null;
+    }
+    final response = await _apiClient.postMap(
+      '/auth/refresh',
+      data: <String, dynamic>{'refreshToken': refreshToken},
+    );
+    final newToken = response['token'] as String?;
+    final newRefreshToken = response['refreshToken'] as String?;
+    if (newToken == null || newToken.isEmpty ||
+        newRefreshToken == null || newRefreshToken.isEmpty) {
+      throw StateError('The server did not return a valid refreshed session.');
+    }
+    token = newToken;
+    _apiClient.setToken(newToken);
+    await _storage.write(key: _tokenKey, value: newToken);
+    await _storage.write(key: _refreshTokenKey, value: newRefreshToken);
+    if (isReady && accountId != null) {
+      _connectRealtime();
+    }
+    return newToken;
   }
 
   void _connectRealtime() {
@@ -184,6 +244,8 @@ class SessionState extends ChangeNotifier {
   }
 
   Future<void> _clearLocalSession() async {
+    _sessionRefreshTimer?.cancel();
+    _sessionRefreshTimer = null;
     _realtimeService.disconnect();
     await _smsMonitoringService.stop();
     token = null;
@@ -196,5 +258,31 @@ class SessionState extends ChangeNotifier {
     _apiClient.setToken(null);
     await _storage.deleteAll();
     notifyListeners();
+  }
+
+  void _startSessionRefreshTimer() {
+    _sessionRefreshTimer?.cancel();
+    _sessionRefreshTimer = Timer.periodic(const Duration(minutes: 10), (_) {
+      unawaited(_renewSession());
+    });
+  }
+
+  Future<void> _renewSession() async {
+    try {
+      await _refreshAccessToken();
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401) {
+        await _expireSession();
+      } else {
+        debugPrint('PaySentry session refresh failed; the saved session will be retried.');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _sessionRefreshTimer?.cancel();
+    _realtimeService.disconnect();
+    super.dispose();
   }
 }

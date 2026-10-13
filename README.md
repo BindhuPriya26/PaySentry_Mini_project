@@ -43,6 +43,10 @@ PaySentry/
 
 These are development-project capabilities, not a claim of bank-grade or independently verified fraud detection. A LOW score does not prove that content is safe.
 
+## Cloud deployment
+
+For a zero-cost internet deployment, follow [DEPLOYMENT.md](./DEPLOYMENT.md): Render Free for the Spring Boot API and static React dashboard, plus a TiDB Cloud Starter Free MySQL-compatible database. Render's API sleeps when idle and has ephemeral local storage, so persistent accounts belong in TiDB, not on the web service. The free database has monthly storage/request quotas and must be configured with TLS. No hosted URL exists until the provider accounts and services have been created and verified.
+
 ## Before running
 
 The current workstation has Java 11, Maven 3.9.9, MySQL 8, and Node installed. Install Flutter, Dart, Android SDK/ADB, and the VS Code Dart + Flutter extensions before running `mobile-app`.
@@ -135,7 +139,7 @@ Get-Service *mysql*
 Start-Service -Name 'MySQL80'
 ```
 
-Set `PAYSENTRY_DB_URL`, `PAYSENTRY_DB_USERNAME`, and `PAYSENTRY_DB_PASSWORD` in the local environment. For an existing database, apply the one-time schema change in `database/migrations/V001__add_user_token_version.sql` before starting the new backend. The development H2 profile uses Hibernate schema updates; MySQL schema changes must be reviewed and applied separately.
+Set `PAYSENTRY_DB_URL`, `PAYSENTRY_DB_USERNAME`, and `PAYSENTRY_DB_PASSWORD` in the local environment. The `mysql` profile runs Flyway migrations and keeps Hibernate in `validate` mode. Empty databases are initialized from the versioned baseline; existing databases are baselined without dropping tables and receive the additive V2 migration. Do not replay `database/schema.sql` against a production database. The older manual `database/migrations/V001__add_user_token_version.sql` applies only to historical schemas that lack `token_version`; the current schema already has that column.
 
 Start the backend with:
 
@@ -157,7 +161,7 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api --dart-define=WE
 
 `10.0.2.2` is the Android Emulator address for the host computer. For a physical phone, put the phone and computer on the same trusted Wi-Fi, use the computer's LAN IPv4 address in both `--dart-define` values, and allow ports 8080 and 8081 through the local firewall. HTTP and WS are permitted only in the Android debug manifest; use HTTPS and WSS with valid certificates for release builds. The main manifest blocks cleartext traffic.
 
-To create and install a debug APK for a phone, set the reachable backend URLs before building, then install over USB with Android platform-tools:
+To create and install a debug APK for a phone during local development, set the reachable backend URLs before building, then install over USB with Android platform-tools:
 
 ```powershell
 flutter build apk --debug --dart-define=API_BASE_URL=http://192.168.1.25:8080/api --dart-define=WEBSOCKET_URL=ws://192.168.1.25:8080/ws
@@ -165,6 +169,8 @@ adb install -r .\build\app\outputs\flutter-apk\app-debug.apk
 ```
 
 Replace the example address with the laptop's Wi-Fi IPv4 from `ipconfig`. `localhost` only reaches the same device, while `10.0.2.2` is emulator-only; a real phone must use the laptop's reachable LAN address. Start services before the app. For Windows Firewall, allow inbound TCP 8080 on Private networks only (run PowerShell as Administrator if a rule is needed):
+
+For release builds, do not use a laptop address. Use the cloud procedure in [DEPLOYMENT.md](./DEPLOYMENT.md) and provide production HTTPS/WSS URLs through `--dart-define-from-file`.
 
 ```powershell
 New-NetFirewallRule -DisplayName 'PaySentry local API (Private)' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -Profile Private
@@ -224,4 +230,4 @@ Backend tests cover the shared risk engine, authentication security, QR analysis
 - `GET /api/mobile/alerts` — authenticated fraud history
 - `POST /api/detections/sms`, `/url`, `/qr` — authenticated unified content checks
 
-The mock service's internal call to the backend uses `X-Mock-Bank-Key`; configure the same strong, private `PAYSENTRY_MOCK_BANK_KEY` for both services. The backend requires a 256-bit JWT signing key and refuses to start if it is missing or too short. Do not expose H2, use development HTTP/WS, or rely on the in-process rate limiter in production. MySQL production deployments should use TLS, managed schema migrations, backups, retention controls, and a gateway-level distributed rate limiter. Password-reset delivery is intentionally disabled until an email delivery provider is configured; the public endpoint does not return reset tokens.
+The mock service's internal call to the backend uses `X-Mock-Bank-Key`; configure the same strong, private `PAYSENTRY_MOCK_BANK_KEY` for both services. The backend requires a 256-bit JWT signing key and refuses to start if it is missing or too short. Do not expose H2, use development HTTP/WS, or rely on the in-process rate limiter in production. MySQL production deployments should use encrypted private networking or database TLS, managed schema migrations, tested backups, retention controls, and a gateway-level distributed rate limiter. Password-reset delivery is intentionally disabled until an email delivery provider is configured; the public endpoint does not return reset tokens.

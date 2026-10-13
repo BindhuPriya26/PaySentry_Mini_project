@@ -1,0 +1,4 @@
+{
+  "API_BASE_URL": "https://<your-api-domain>/api",
+  "WEBSOCKET_URL": "wss://<your-api-domain>/ws"
+}

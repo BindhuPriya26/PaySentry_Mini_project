@@ -1,7 +1,13 @@
 import { Client } from "@stomp/stompjs";
 import { startTransition, useEffect, useRef, useState } from "react";
 
-import { api, extractErrorMessage, resolveWebSocketUrl, setAuthToken } from "./api/client";
+import {
+  api,
+  extractErrorMessage,
+  resolveWebSocketUrl,
+  setAuthSession,
+  setSessionCallbacks
+} from "./api/client";
 import AdminSection from "./components/AdminSection";
 import AuthPanel from "./components/AuthPanel";
 import DashboardHeader from "./components/DashboardHeader";
@@ -165,6 +171,14 @@ function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const refreshWorkspaceRef = useRef(() => {});
 
+  useEffect(() => {
+    setSessionCallbacks({
+      onUpdated: (updatedSession) => setSession(updatedSession),
+      onExpired: () => setSession(null)
+    });
+    return () => setSessionCallbacks({ onUpdated: null, onExpired: null });
+  }, []);
+
   const allowedNavItems =
     session?.role === "ADMIN" ? navItems : navItems.filter((item) => item.id !== "admin");
 
@@ -181,12 +195,12 @@ function App() {
 
   useEffect(() => {
     if (!session?.token) {
-      setAuthToken(null);
+      setAuthSession(null);
       window.sessionStorage.removeItem(STORAGE_KEY);
       return;
     }
 
-    setAuthToken(session.token);
+    setAuthSession(session);
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 
     let ignore = false;
@@ -669,11 +683,13 @@ function App() {
   async function handleLogout() {
     let revoked = true;
     try {
-      await api.post("/auth/logout");
+      await api.post("/auth/logout", {
+        refreshToken: session?.refreshToken
+      });
     } catch (error) {
       revoked = false;
     }
-    setAuthToken(null);
+    setAuthSession(null);
     setSession(null);
     setDashboard(null);
     setMonitoringDashboard(null);

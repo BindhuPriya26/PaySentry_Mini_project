@@ -8,7 +8,7 @@ import com.paysentry.backend.entity.User;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    Optional<User> findByEmailIgnoreCase(String email);
+    Optional<User> findByNormalizedEmail(String normalizedEmail);
 
     long countByActiveTrue();
 }

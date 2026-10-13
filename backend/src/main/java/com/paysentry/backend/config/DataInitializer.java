@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.paysentry.backend.entity.Role;
@@ -14,6 +15,7 @@ import com.paysentry.backend.monitoring.BankAccountService;
 import com.paysentry.backend.repository.UserRepository;
 
 @Configuration
+@Profile("!prod")
 public class DataInitializer {
 
     @Bean
@@ -36,9 +38,10 @@ public class DataInitializer {
                 );
             }
             String normalizedEmail = adminEmail.trim().toLowerCase(Locale.ROOT);
-            User adminUser = userRepository.findByEmailIgnoreCase(normalizedEmail).orElseGet(User::new);
+            User adminUser = userRepository.findByNormalizedEmail(normalizedEmail).orElseGet(User::new);
             adminUser.setFullName(adminName.trim());
             adminUser.setEmail(normalizedEmail);
+            adminUser.setNormalizedEmail(normalizedEmail);
             adminUser.setPassword(passwordEncoder.encode(adminPassword));
             adminUser.setRole(Role.ADMIN);
             adminUser.setActive(true);

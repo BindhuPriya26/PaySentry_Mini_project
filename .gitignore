@@ -20,3 +20,7 @@ backend/.settings/
 *.war
 *.iml
 .DS_Store
+.env
+.env.*
+!.env.example
+mobile-app/config/production.json

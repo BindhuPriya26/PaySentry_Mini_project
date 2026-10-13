@@ -20,11 +20,50 @@ class ApiClient {
     }
     _dio.interceptors.add(
       InterceptorsWrapper(
-        onError: (error, handler) {
-          if (error.response?.statusCode == HttpStatus.unauthorized) {
-            _onUnauthorized?.call();
+        onError: (error, handler) async {
+          if (error.response?.statusCode != HttpStatus.unauthorized ||
+              _isAuthenticationRequest(error.requestOptions.path)) {
+            handler.next(error);
+            return;
           }
-          handler.next(error);
+
+          if (error.requestOptions.extra['sessionRefreshAttempted'] == true) {
+            _onUnauthorized?.call();
+            handler.next(error);
+            return;
+          }
+
+          final refresh = _onRefresh;
+          if (refresh == null) {
+            _onUnauthorized?.call();
+            handler.next(error);
+            return;
+          }
+
+          try {
+            final newToken = await (_refreshing ??= refresh().whenComplete(() {
+              _refreshing = null;
+            }));
+            if (newToken == null) {
+              _onUnauthorized?.call();
+              handler.next(error);
+              return;
+            }
+
+            final request = error.requestOptions;
+            request.headers[HttpHeaders.authorizationHeader] = 'Bearer $newToken';
+            request.extra['sessionRefreshAttempted'] = true;
+            handler.resolve(await _dio.fetch<dynamic>(request));
+          } on DioException catch (refreshError) {
+            if (refreshError.response?.statusCode == HttpStatus.unauthorized) {
+              _onUnauthorized?.call();
+            }
+            handler.next(
+              refreshError.response?.statusCode == HttpStatus.unauthorized
+                  ? error
+                  : refreshError,
+            );
+          }
         },
       ),
     );
@@ -32,10 +71,21 @@ class ApiClient {
 
   final Dio _dio;
   VoidCallback? _onUnauthorized;
+  Future<String?> Function()? _onRefresh;
+  Future<String?>? _refreshing;
 
   void setUnauthorizedHandler(VoidCallback? handler) {
     _onUnauthorized = handler;
   }
+
+  void setRefreshHandler(Future<String?> Function()? handler) {
+    _onRefresh = handler;
+  }
+
+  bool _isAuthenticationRequest(String path) =>
+      path.endsWith('/auth/login') ||
+      path.endsWith('/auth/register') ||
+      path.endsWith('/auth/refresh');
 
   void setToken(String? token) {
     _dio.options.headers.remove(HttpHeaders.authorizationHeader);

@@ -8,8 +8,8 @@ import com.paysentry.backend.dto.auth.ForgotPasswordRequest;
 import com.paysentry.backend.dto.auth.ForgotPasswordResponse;
 import com.paysentry.backend.monitoring.BankAccountService;
 import com.paysentry.backend.repository.PasswordResetTokenRepository;
+import com.paysentry.backend.repository.RefreshTokenRepository;
 import com.paysentry.backend.repository.UserRepository;
-import com.paysentry.backend.security.JwtRevocationService;
 import com.paysentry.backend.security.JwtService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,11 +25,12 @@ class AuthServiceSecurityTests {
         AuthService authService = new AuthService(
             users,
             resetTokens,
+            mock(RefreshTokenRepository.class),
             mock(PasswordEncoder.class),
             mock(AuthenticationManager.class),
             mock(JwtService.class),
             mock(BankAccountService.class),
-            mock(JwtRevocationService.class)
+            30
         );
 
         ForgotPasswordRequest request = new ForgotPasswordRequest();

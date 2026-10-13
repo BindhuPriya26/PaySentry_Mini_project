@@ -37,10 +37,15 @@ public class JwtService {
     }
 
     public String generateToken(User user) {
+        return generateToken(user, UUID.randomUUID().toString());
+    }
+
+    public String generateToken(User user, String sessionId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", user.getRole().name());
         claims.put("fullName", user.getFullName());
         claims.put("tokenVersion", user.getTokenVersion());
+        claims.put("sessionId", sessionId);
         return buildToken(claims, user);
     }
 
@@ -66,6 +71,10 @@ public class JwtService {
 
     public String extractTokenId(String token) {
         return extractClaim(token, Claims::getId);
+    }
+
+    public String extractSessionId(String token) {
+        return extractClaim(token, claims -> claims.get("sessionId", String.class));
     }
 
     public Date extractExpiry(String token) {

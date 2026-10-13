@@ -34,6 +34,9 @@ public class User implements UserDetails {
     @Column(nullable = false, unique = true, length = 160)
     private String email;
 
+    @Column(name = "normalized_email", nullable = false, unique = true, length = 160)
+    private String normalizedEmail;
+
     @Column(nullable = false)
     private String password;
 
@@ -98,6 +101,14 @@ public class User implements UserDetails {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getNormalizedEmail() {
+        return normalizedEmail;
+    }
+
+    public void setNormalizedEmail(String normalizedEmail) {
+        this.normalizedEmail = normalizedEmail;
     }
 
     @Override

@@ -8,7 +8,6 @@ import javax.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,6 +16,7 @@ import com.paysentry.backend.dto.auth.ForgotPasswordRequest;
 import com.paysentry.backend.dto.auth.ForgotPasswordResponse;
 import com.paysentry.backend.dto.auth.LoginRequest;
 import com.paysentry.backend.dto.auth.RegisterRequest;
+import com.paysentry.backend.dto.auth.RefreshTokenRequest;
 import com.paysentry.backend.dto.auth.ResetPasswordRequest;
 import com.paysentry.backend.service.AuthService;
 
@@ -40,9 +40,16 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return ResponseEntity.ok(authService.refresh(request));
+    }
+
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authorizationHeader) {
-        authService.logout(authorizationHeader);
+    public ResponseEntity<Void> logout(
+        @Valid @RequestBody RefreshTokenRequest request
+    ) {
+        authService.logout(request);
         return ResponseEntity.noContent().build();
     }
 

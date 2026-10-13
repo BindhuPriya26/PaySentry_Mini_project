@@ -8,6 +8,7 @@ public class AuthResponse {
     private String role;
     private String accountId;
     private String token;
+    private String refreshToken;
 
     public Long getUserId() {
         return userId;
@@ -55,5 +56,13 @@ public class AuthResponse {
 
     public void setToken(String token) {
         this.token = token;
+    }
+
+    public String getRefreshToken() {
+        return refreshToken;
+    }
+
+    public void setRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
     }
 }

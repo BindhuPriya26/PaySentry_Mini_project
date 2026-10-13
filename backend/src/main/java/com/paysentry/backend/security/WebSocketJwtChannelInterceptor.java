@@ -13,10 +13,12 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Locale;
 
 import com.paysentry.backend.entity.BankAccount;
 import com.paysentry.backend.entity.User;
 import com.paysentry.backend.repository.BankAccountRepository;
+import com.paysentry.backend.repository.RefreshTokenRepository;
 import com.paysentry.backend.repository.UserRepository;
 import com.paysentry.backend.service.CustomUserDetailsService;
 
@@ -29,6 +31,7 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
     private final CustomUserDetailsService userDetailsService;
     private final UserRepository userRepository;
     private final BankAccountRepository bankAccountRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final JwtRevocationService jwtRevocationService;
 
     public WebSocketJwtChannelInterceptor(
@@ -36,12 +39,14 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
         CustomUserDetailsService userDetailsService,
         UserRepository userRepository,
         BankAccountRepository bankAccountRepository,
+        RefreshTokenRepository refreshTokenRepository,
         JwtRevocationService jwtRevocationService
     ) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
         this.userRepository = userRepository;
         this.bankAccountRepository = bankAccountRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.jwtRevocationService = jwtRevocationService;
     }
 
@@ -66,7 +71,14 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
         String token = authorization.substring(7);
         String username = jwtService.extractUsername(token);
         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-        if (!jwtService.isTokenValid(token, userDetails) || jwtRevocationService.isRevoked(jwtService.extractTokenId(token))) {
+        String sessionId = jwtService.extractSessionId(token);
+        if (!jwtService.isTokenValid(token, userDetails)
+            || sessionId == null
+            || !refreshTokenRepository.existsBySessionIdAndExpiresAtAfter(
+                sessionId,
+                java.time.LocalDateTime.now()
+            )
+            || jwtRevocationService.isRevoked(jwtService.extractTokenId(token))) {
             throw new AccessDeniedException("The JWT token is invalid or expired.");
         }
 
@@ -90,7 +102,7 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
             throw new AccessDeniedException("Authenticate before subscribing to PaySentry alerts.");
         }
 
-        User user = userRepository.findByEmailIgnoreCase((String) email)
+        User user = userRepository.findByNormalizedEmail(((String) email).trim().toLowerCase(Locale.ROOT))
             .orElseThrow(() -> new AccessDeniedException("The alert-stream user does not exist."));
         String destination = accessor.getDestination();
         if (destination == null) {

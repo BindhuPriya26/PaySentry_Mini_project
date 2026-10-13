@@ -1,6 +1,7 @@
 package com.paysentry.backend.security;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Optional;
 
 import javax.servlet.FilterChain;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.paysentry.backend.entity.User;
+import com.paysentry.backend.repository.RefreshTokenRepository;
 import com.paysentry.backend.repository.UserRepository;
 
 @Component
@@ -22,15 +24,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final JwtRevocationService jwtRevocationService;
 
     public JwtAuthenticationFilter(
         JwtService jwtService,
         UserRepository userRepository,
+        RefreshTokenRepository refreshTokenRepository,
         JwtRevocationService jwtRevocationService
     ) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.jwtRevocationService = jwtRevocationService;
     }
 
@@ -49,10 +54,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String jwt = authHeader.substring(7);
         try {
             String email = jwtService.extractUsername(jwt);
+            String sessionId = jwtService.extractSessionId(jwt);
             if (email != null
+                && sessionId != null
+                && refreshTokenRepository.existsBySessionIdAndExpiresAtAfter(
+                    sessionId,
+                    java.time.LocalDateTime.now()
+                )
                 && !jwtRevocationService.isRevoked(jwtService.extractTokenId(jwt))
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
-                Optional<User> userOptional = userRepository.findByEmailIgnoreCase(email);
+                Optional<User> userOptional =
+                    userRepository.findByNormalizedEmail(email.trim().toLowerCase(Locale.ROOT));
                 if (userOptional.isPresent() && jwtService.isTokenValid(jwt, userOptional.get())) {
                     User user = userOptional.get();
                     UsernamePasswordAuthenticationToken authenticationToken =
