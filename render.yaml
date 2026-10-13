@@ -39,7 +39,6 @@ services:
   - type: web
     name: paysentry-dashboard
     runtime: static
-    plan: free
     rootDir: legacy-web-dashboard
     buildCommand: npm ci && npm run build
     staticPublishPath: ./web-build
